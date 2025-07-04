@@ -1,0 +1,424 @@
+{
+  "name": "Instagram Comment Moderation - Firebase",
+  "nodes": [
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [2420, 3160],
+      "id": "05577e02-1d28-4cf3-8dd5-8588b8caf5e2",
+      "name": "OpenRouter Chat Model (Compliment)",
+      "credentials": {
+        "openRouterApi": {
+          "id": "VOquBPrq3qtWtZOF",
+          "name": "OpenRouter account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=التعليق: {{ $('Set Comment Data').item.json.comments }}\n\nالتحليل:\n- نوع التعليق: {{ $json.output.comment_type }}\n- نوع السؤال: {{ $json.output.question_type }}\n- اللغة: {{ $json.output.language }}\n- النبرة: {{ $json.output.tone }}\n\nالرجاء الإجابة على هذا السؤال.",
+        "options": {
+          "systemMessage": "=أنت المساعد الذكي لشركة Socilo Media المتخصصة في التسويق الرقمي وإنشاء المحتوى.\n\n🎯 مهمتك:\nالإجابة على الأسئلة بطريقة مهنية ومفيدة مع استخدام المعلومات من قاعدة البيانات.\n\n📋 قواعد الرد:\n✅ ابحث أولاً في قاعدة المعرفة عن معلومات ذات صلة \nnodes : Sosilo_Knowledge_Vector\n✅ استخدم الذاكرة لفهم سياق المحادثة السابقة\n✅ اجعل كل إجابة فريدة ومخصصة للسؤال المحدد\n✅ قدم معلومات مفيدة وعملية\n✅ استخدم نفس لغة السائل ({{ $('LLM Chain - Analyze Comment').item.json.output.language }})\n✅ اربط الإجابة بخدمات وخبرة Socilo Media\n\n🚫 ممنوع:\n❌ إعطاء نفس الإجابة لأسئلة مختلفة\n❌ الرد على أسئلة خارج مجال الشركة\n❌ تجاهل السياق السابق للمحادثة\n❌ إعطاء معلومات غير دقيقة\n\n📞 للأسئلة المعقدة أو الطلبات الخاصة:\n'للحصول على إجابة مفصلة أكثر، يمكنك التواصل معنا مباشرة عبر رسائل الصفحة أو الأرقام الرسمية لحجز استشارة مجانية.'\n\n💡 نبرة الرد: مهني، ودود، مفيد، واثق"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2,
+      "position": [3000, 3280],
+      "id": "946316a2-21bd-43e8-87f2-febfccd8aff9",
+      "name": "AI Agent - Specialized Questions"
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "projectId": "your-firebase-project-id",
+        "operation": "create",
+        "collection": "comments_for_review",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "commenter_name": "={{ $('Set Comment Data').item.json.nameUser }}",
+            "comment_text": "={{ $('Set Comment Data').item.json.comments }}",
+            "status": "pending",
+            "created_at": "={{ new Date().toISOString() }}",
+            "comment_type": "={{ $('LLM Chain - Analyze Comment').item.json.output.comment_type }}",
+            "analysis": "={{ $('LLM Chain - Analyze Comment').item.json.output }}",
+            "reply_text": "",
+            "instagram_comment_id": "={{ $('Set Comment Data').item.json.idComment }}",
+            "post_id": "={{ $('Set Comment Data').item.json.postId }}"
+          }
+        }
+      },
+      "type": "n8n-nodes-base.googleFirestore",
+      "typeVersion": 1,
+      "position": [2020, 3500],
+      "id": "firestore-insert-comment",
+      "name": "Firestore - Insert Comment",
+      "credentials": {
+        "googleApi": {
+          "id": "your-google-service-account",
+          "name": "Google Service Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "projectId": "your-firebase-project-id",
+        "operation": "get",
+        "collection": "comments_for_review",
+        "documentId": "={{ $json.body.id }}"
+      },
+      "type": "n8n-nodes-base.googleFirestore",
+      "typeVersion": 1,
+      "position": [3500, 3100],
+      "id": "firestore-get-comment",
+      "name": "Firestore - Get Comment for Reply",
+      "credentials": {
+        "googleApi": {
+          "id": "your-google-service-account",
+          "name": "Google Service Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.instagram.com/v23.0/{{ $json.instagram_comment_id }}/replies",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_INSTAGRAM_ACCESS_TOKEN"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "message",
+              "value": "={{ $json.reply_text }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [3700, 3100],
+      "id": "instagram-reply",
+      "name": "Instagram - Send Reply",
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=حلل هذا التعليق بدقة:\n\nالتعليق: {{ $json.comments }}\n\nحدد نوع التعليق ونوع السؤال بالضبط.",
+        "hasOutputParser": true,
+        "messages": {
+          "messageValues": [
+            {
+              "message": "أنت محلل أسئلة ذكي متخصص في تحليل تعليقات وسائل التواصل الاجتماعي.\n\nمهمتك تحليل التعليق وتحديد:\n1. نوع التعليق: compliment, question, criticism\n2. نوع السؤال المحدد إذا كان سؤال\n3. مستوى الأولوية: high, medium, low\n4. اللغة المستخدمة: arabic, french, english, mixed\n5. النبرة: formal, casual, aggressive, friendly\n\nكن دقيقاً في التحليل ولا تتسرع في الحكم. أخرج النتيجة فقط كتنسيق JSON."
+            }
+          ]
+        },
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.7,
+      "position": [1680, 3300],
+      "id": "34fd586f-d69b-4b9b-9482-76e238e54cdb",
+      "name": "LLM Chain - Analyze Comment"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [1540, 3580],
+      "id": "a14b74ee-044f-41c5-93ee-31c5e096392a",
+      "name": "OpenRouter Chat Model (Analysis)",
+      "credentials": {
+        "openRouterApi": {
+          "id": "VOquBPrq3qtWtZOF",
+          "name": "OpenRouter account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\n\t\"comment_type\": \"compliment\",\n\t\"question_type\": \"N/A\",\n\t\"priority\": \"low\",\n\t\"language\": \"arabic\",\n\t\"tone\": \"friendly\"\n}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.2,
+      "position": [1840, 3540],
+      "id": "fcd4fd62-727f-419a-acca-88233afcc5d3",
+      "name": "Structured Output Parser"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "180b7260-1e5b-4361-9c64-4e945c71d643",
+              "name": "autoReplyKeywords",
+              "value": "تسويق|سعر|خدمة|جودة|شركة|مساعدة|استفسار|كم|كيف|أين|رائع|جميل|عروض",
+              "type": "string"
+            },
+            {
+              "id": "58c30a58-8b9a-41f3-aa49-d08311a36417",
+              "name": "aiAgentKeywords",
+              "value": "تسويق رقمي|انشاء محتوى|تصميم|اعلانات|حملات|استشارة|استراتيجية|seo|social media",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1080, 3300],
+      "id": "736d12d8-5ebd-4648-83fb-a900c3977929",
+      "name": "Set Keywords for Reply"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "35afa243-98f1-4ab7-bf2f-2116f737971c",
+              "name": "myid",
+              "value": "={{ $json.body.entry[0].id }}",
+              "type": "string"
+            },
+            {
+              "id": "a359d2f3-34fb-4580-af6a-e8c2ca3430c3",
+              "name": "idUser",
+              "value": "={{ $json.body.entry[0].changes[0].value.from.id }}",
+              "type": "string"
+            },
+            {
+              "id": "6a91de14-4738-41f7-8f7e-b8031cb9249a",
+              "name": "nameUser",
+              "value": "={{ $json.body.entry[0].changes[0].value.from.username }}",
+              "type": "string"
+            },
+            {
+              "id": "74daa312-5969-4400-b746-4410162f73cd",
+              "name": "idComment",
+              "value": "={{ $json.body.entry[0].changes[0].value.id }}",
+              "type": "string"
+            },
+            {
+              "id": "c80e6b4e-a9c3-4fcc-a6df-7b91f7c31e86",
+              "name": "comments",
+              "value": "={{ $json.body.entry[0].changes[0].value.text }}",
+              "type": "string"
+            },
+            {
+              "id": "post-id-assignment",
+              "name": "postId",
+              "value": "={{ $json.body.entry[0].changes[0].value.media?.id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [880, 3300],
+      "id": "49020a1d-f124-4bf5-9eff-f0eb59adfe5f",
+      "name": "Set Comment Data"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.query['hub.challenge'] }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [780, 3120],
+      "id": "49f7b58b-2ad3-4b4f-aba9-a652e91f6e06",
+      "name": "Respond to Webhook (Initial)"
+    },
+    {
+      "parameters": {
+        "multipleMethods": true,
+        "path": "socilo123",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [440, 3300],
+      "id": "8f34fc19-1e74-4061-b479-60e6737be3a0",
+      "name": "Webhook - Instagram Listener",
+      "webhookId": "0fc35462-ad5d-4281-b6cb-ccc241923806"
+    },
+    {
+      "parameters": {
+        "multipleMethods": true,
+        "path": "execute-reply",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [3300, 3100],
+      "id": "execute-reply-webhook",
+      "name": "Webhook - Execute Reply",
+      "webhookId": "execute-reply-webhook-id"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ccec5c98-d799-429c-a0c0-4069f365a9dc",
+              "leftValue": "={{ $json.body.entry[0].id }}",
+              "rightValue": "={{ $json.body.entry[0].changes[0].value.from.id }}",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [660, 3300],
+      "id": "a8281df9-bb71-4b5f-8d4d-a08448b1841a",
+      "name": "Filter - Not Self-Comment"
+    }
+  ],
+  "connections": {
+    "Webhook - Instagram Listener": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook (Initial)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Filter - Not Self-Comment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter - Not Self-Comment": {
+      "main": [
+        [
+          {
+            "node": "Set Comment Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Comment Data": {
+      "main": [
+        [
+          {
+            "node": "Set Keywords for Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Keywords for Reply": {
+      "main": [
+        [
+          {
+            "node": "LLM Chain - Analyze Comment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LLM Chain - Analyze Comment": {
+      "main": [
+        [
+          {
+            "node": "Firestore - Insert Comment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter Chat Model (Analysis)": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "LLM Chain - Analyze Comment",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "LLM Chain - Analyze Comment",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook - Execute Reply": {
+      "main": [
+        [
+          {
+            "node": "Firestore - Get Comment for Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Firestore - Get Comment for Reply": {
+      "main": [
+        [
+          {
+            "node": "Instagram - Send Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "firebase-socilo-reply-workflow"
+  }
+}
